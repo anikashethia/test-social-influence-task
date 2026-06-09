@@ -3,9 +3,10 @@
 Artwork rating task adapted from Welborn et al. (2016). Measures whether felt
 social connection with an AI agent modulates social influence susceptibility.
 
-Participants rate artworks before (Phase 1) and after (Phase 2) seeing each
-agent's rating. Influence is operationalized as the shift toward the agent's
-rating, normalised by the maximum possible shift.
+Runs **after** the social connection task in the same lab session. Participants
+rate artworks before (Phase 1) and after (Phase 2) seeing each agent's rating.
+Influence is operationalized as the shift toward the agent's rating, normalised
+by the maximum possible shift.
 
 ## Structure
 
@@ -14,48 +15,56 @@ social-influence-task/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py          # FastAPI routes
-│   │   ├── models.py        # SQLAlchemy models (Session, Block, Rating, Event, Trigger)
+│   │   ├── models.py        # SQLAlchemy models (Session, Block, Rating, Event)
 │   │   ├── db.py            # DB engine / session
 │   │   ├── stimuli.py       # Artwork loading & artwork-condition assignment
-│   │   ├── pilot.py         # Participant counter (persistent, mirrors social connection task)
+│   │   ├── pilot.py         # Participant counter (persistent)
 │   │   └── stimuli/
-│   │       ├── artworks.json       # 75 artwork stimulus definitions + image_url
+│   │       ├── artworks.json       # 50 artwork stimulus definitions
 │   │       └── agent_ratings.json  # Pre-generated agent ratings per artwork (add before running)
 │   ├── pyproject.toml
 │   └── .env.example
-└── frontend/
-    ├── src/
-    │   ├── main.tsx          # Entry point — routes to PilotApp or dev App
-    │   ├── App.tsx           # Dev landing screen
-    │   ├── PilotApp.tsx      # Prolific participant orchestrator
-    │   ├── timeline.ts       # jsPsych timeline (Phase 1 + Phase 2)
-    │   ├── api.ts            # API client
-    │   └── components/
-    │       └── TimelineRunner.tsx
-    ├── index.html
-    └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── main.tsx          # Entry point — routes to PilotApp or dev App
+│   │   ├── App.tsx           # Dev landing screen
+│   │   ├── PilotApp.tsx      # Prolific participant orchestrator
+│   │   ├── timeline.ts       # jsPsych timeline (Phase 1 + Phase 2)
+│   │   ├── api.ts            # API client
+│   │   └── components/
+│   │       └── TimelineRunner.tsx
+│   ├── index.html
+│   └── package.json
+└── scripts/
+    └── csv_to_artworks.py    # Convert stimulus CSV → artworks.json
 ```
 
 ## Task Design
 
-**Phase 1 — Baseline rating** (pre-scan, lab computer)
-- 75 artworks rated on a 0–100 continuous slider
+**Phase 1 — Baseline rating** (~7 min)
+- 50 artworks rated on a 0–100 continuous slider
 - No agent information shown
-- Duration: ~8 min
 
-**Phase 2 — Influence task** (post-scan, lab computer)
-- Same 75 artworks, randomly interleaved across agent conditions
+**Phase 2 — Influence task** (~15 min)
+- Same 50 artworks, randomly interleaved across agent conditions
 - Trial structure per artwork:
   1. Artwork + agent rating reveal (4 s)
   2. Participant re-rates on 0–100 slider (self-paced, ≤8 s)
   3. ITI fixation cross (2–4 s jittered)
-- Duration: ~18 min
-- 5 conditions: Alex, Sam, Casey, Jordan (the 4 chat agents), + RNG control
+
+**12 conditions:**
+- 6 named agents: Alex, Sam, Casey, Jordan, Morgan, Riley
+- 6 RNG controls: RNG_1 through RNG_6 (displayed as "Another user")
+
+Each RNG condition uses a different fixed seed so different RNG conditions
+produce different ratings for the same artwork, but the same rating across
+participants.
 
 **Counterbalancing**
 - Each artwork appears in exactly one condition per participant
-- Condition assignment: `(artwork_id − 1 + participant_index) mod 5`
-- Every 5 participants = 1 complete rotation
+- Condition assignment: `(artwork_id − 1 + participant_index) mod 12`
+- Every 12 participants = 1 complete rotation
+- 50 artworks / 12 conditions → conditions 0–1 get 5 artworks, rest get 4
 
 **Influence score (computed at analysis time)**
 ```
@@ -90,42 +99,37 @@ connection task on 5173).
 
 ### 1. Populate artworks.json
 
-The `stimuli/artworks.json` file ships with 5 example entries. Add all 75
-artworks from the stimulus spreadsheet. Each entry needs:
+Use the conversion script to generate artworks.json from the stimulus CSV:
 
-```json
-{
-  "id": 1,
-  "title": "...",
-  "artist": "...",
-  "year": 1875,
-  "medium": "...",
-  "style": "...",
-  "wikiart_url": "...",
-  "image_url": "https://your-cdn.com/artworks/1.jpg",
-  "expected_valence": 71,
-  "valence_category": "Liked",
-  "familiarity_risk": "Low"
-}
+```bash
+python scripts/csv_to_artworks.py path/to/stimulus_list.csv --n 50 --out backend/app/stimuli/artworks.json
 ```
 
-`image_url` must point to a hosted image (see Image Hosting below).
+Arguments:
+- `csv_path` (positional): path to the stimulus CSV
+- `--n`: number of artworks to include (default: 50)
+- `--out`: output JSON path (default: `backend/app/stimuli/artworks.json`)
+
+The CSV should have columns: ID, Title, Artist, Year, Medium,
+Style / Movement, WikiArt URL, Valence Category, Familiarity Risk.
 
 ### 2. Add agent_ratings.json
 
 Create `backend/app/stimuli/agent_ratings.json` with pre-generated agent
-ratings for each artwork. These are fixed per-artwork ratings that all
-participants see for each agent condition. Format:
+ratings for each artwork. Format:
 
 ```json
 {
   "Alex":   {"1": 72, "2": 45, "3": 68, ...},
   "Sam":    {"1": 60, "2": 38, "3": 55, ...},
   "Casey":  {"1": 65, "2": 50, "3": 60, ...},
-  "Jordan": {"1": 58, "2": 42, "3": 52, ...}
+  "Jordan": {"1": 58, "2": 42, "3": 52, ...},
+  "Morgan": {"1": 70, "2": 48, "3": 62, ...},
+  "Riley":  {"1": 55, "2": 40, "3": 58, ...}
 }
 ```
 
+RNG ratings are generated at runtime from fixed seeds — no entry needed.
 Without this file, the backend uses deterministic placeholder ratings.
 
 ### 3. Image Hosting
@@ -139,12 +143,13 @@ Download images from WikiArt and host them. Options:
 ## Prolific Study URL
 
 ```
-https://yourstudy.com/?mode=pilot&PROLIFIC_PID={{%PROLIFIC_PID%}}&identities=Alex,Sam,Casey,Jordan
+https://yourstudy.com/?mode=pilot&PROLIFIC_PID={{%PROLIFIC_PID%}}&identities=Alex,Sam,Casey,Jordan,Morgan,Riley&sc_session_id=<id>
 ```
 
-The `identities` param should match the agent identities assigned to this
-participant in the social connection task, so Phase 2 labels match the agents
-they already interacted with.
+- `identities`: comma-separated agent names from the social connection task,
+  so Phase 2 labels match the agents the participant already interacted with.
+- `sc_session_id`: session ID from the social connection task, for cross-task
+  data linkage.
 
 ## Data
 
@@ -152,22 +157,23 @@ All data is stored in SQLite (`social_influence.db`). Key tables:
 
 | Table    | Contents |
 |----------|----------|
-| sessions | One row per participant visit |
+| sessions | One row per participant visit (includes `sc_session_id` for cross-task linkage) |
 | blocks   | One per phase (phase=1 baseline, phase=2 influence) |
-| ratings  | Every artwork rating with timing |
+| ratings  | Every artwork rating with timing and `is_rng` flag |
 | events   | jsPsych timeline events with ms timestamps |
-| triggers | Scanner TR pulses (scanner mode only) |
 
 Export ratings for analysis:
 ```sql
 SELECT
   s.participant_id,
   s.condition_order,
+  s.sc_session_id,
   r.artwork_id,
   b.phase,
   r.rating,
   r.agent_condition,
   r.agent_rating,
+  r.is_rng,
   r.rating_rt_ms,
   r.trial_index
 FROM ratings r

@@ -10,25 +10,23 @@ import TimelineRunner from "./components/TimelineRunner";
 import { createSession } from "./api";
 import type { TaskContext } from "./timeline";
 
-type Mode = "dev" | "scanner";
-
 export default function App() {
   const [ctx, setCtx] = useState<TaskContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const start = async (mode: Mode) => {
+  const start = async () => {
     setLoading(true);
     setError(null);
     try {
       const s = await createSession({
         participant_id: "DEV_USER",
-        mode,
+        mode: "dev",
       });
       setCtx({
         sessionId: s.session_id,
         token: s.session_token,
-        mode,
+        mode: "dev",
         phase1Trials: s.phase1_trials,
         phase2Trials: s.phase2_trials,
       });
@@ -51,25 +49,15 @@ export default function App() {
         </h1>
         <p className="text-sm text-slate-500 mb-6">
           Dev mode: launches full Phase 1 + Phase 2 with test stimuli.
-          Scanner mode adds a "waiting for scanner" screen and logs '5' keypresses as TRs.
         </p>
 
-        <div className="flex flex-col gap-3">
-          <button
-            disabled={loading}
-            onClick={() => start("dev")}
-            className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50"
-          >
-            Dev mode
-          </button>
-          <button
-            disabled={loading}
-            onClick={() => start("scanner")}
-            className="px-4 py-2 bg-slate-900 text-white rounded hover:bg-slate-950 disabled:opacity-50"
-          >
-            Scanner mode
-          </button>
-        </div>
+        <button
+          disabled={loading}
+          onClick={start}
+          className="w-full px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50"
+        >
+          Start dev session
+        </button>
 
         {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
       </div>

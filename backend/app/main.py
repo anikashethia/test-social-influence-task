@@ -1,12 +1,11 @@
 """
 Social Influence Task — FastAPI Backend
 
-Endpoints mirror the social connection task structure:
+Endpoints:
   POST /sessions                          — create session, assign participant index
   POST /sessions/{id}/blocks              — start a rating block (phase 1 or 2)
   POST /sessions/{id}/blocks/{bid}/ratings — submit a single artwork rating
   POST /sessions/{id}/events              — log a jsPsych timeline event
-  POST /sessions/{id}/triggers            — log a scanner TR pulse
   GET  /sessions/{id}/assignment          — return this participant's artwork-condition assignment
   POST /sessions/{id}/complete            — stamp ended_at, return Prolific URL
   GET  /health                            — health check
@@ -27,7 +26,7 @@ load_dotenv()
 
 from .db import Base, engine, get_db
 from . import models
-from .stimuli import build_phase1_trials, build_phase2_trials
+from .stimuli import build_phase1_trials, build_phase2_trials, AGENT_CONDITIONS
 from .pilot import assign_participant_index, ParticipantCounter
 
 
@@ -53,7 +52,6 @@ PROLIFIC_COMPLETION_URL = os.getenv("PROLIFIC_COMPLETION_URL", "")
 # ── Clock ─────────────────────────────────────────────────────────────────────
 
 def session_local_ms(session: models.Session, monotonic_s: float | None = None) -> float:
-    """Convert time.monotonic() (or now) to session-local ms."""
     if session.monotonic_start_s is None:
         return 0.0
     t = monotonic_s if monotonic_s is not None else time.monotonic()
@@ -80,17 +78,16 @@ def require_session_token(
 
 class CreateSessionBody(BaseModel):
     participant_id: str
-    mode: Literal["pilot", "scanner", "dev"] = "dev"
+    mode: Literal["pilot", "dev"] = "dev"
+    identities: str | None = None
+    sc_session_id: str | None = None
 
 
 class CreateSessionResponse(BaseModel):
     session_id: str
     session_token: str
     participant_index: int
-    # Pre-computed Phase 2 trial list so the frontend doesn't need to call
-    # /assignment separately. Includes agent_condition and agent_rating per trial.
     phase2_trials: list[dict]
-    # Phase 1 trial list — same artworks, shuffled differently, no agent info.
     phase1_trials: list[dict]
 
 
@@ -105,8 +102,9 @@ class CreateBlockResponse(BaseModel):
 class SubmitRatingBody(BaseModel):
     artwork_id: int
     rating: float = Field(ge=0, le=100)
-    agent_condition: str | None = None   # Phase 2 only
-    agent_rating: float | None = None    # Phase 2 only
+    agent_condition: str | None = None
+    agent_rating: float | None = None
+    is_rng: bool | None = None
     artwork_onset_ms: float | None = None
     rating_rt_ms: float | None = None
     trial_index: int | None = None
@@ -129,16 +127,6 @@ class LogEventResponse(BaseModel):
     t_ms: float
 
 
-class LogTriggerBody(BaseModel):
-    tr_number: int = Field(ge=0)
-    t_client_ms: float | None = None
-
-
-class LogTriggerResponse(BaseModel):
-    trigger_id: str
-    t_ms: float
-
-
 class CompleteSessionResponse(BaseModel):
     prolific_completion_url: str
 
@@ -152,21 +140,26 @@ def health():
 
 @app.post("/sessions", response_model=CreateSessionResponse)
 def create_session(body: CreateSessionBody, db: DBSession = Depends(get_db)):
-    # Assign participant index (persistent counter)
     if body.mode == "pilot":
         participant_index = assign_participant_index(db)
     else:
-        # Dev mode: use 0 for testing
         participant_index = 0
 
-    # Artwork-condition assignment and trial lists
     phase1_trials = build_phase1_trials(participant_index)
     phase2_trials = build_phase2_trials(participant_index)
+
+    identity_order = None
+    if body.identities:
+        valid = [name.strip() for name in body.identities.split(",") if name.strip() in AGENT_CONDITIONS]
+        if valid:
+            identity_order = ",".join(valid)
 
     session = models.Session(
         participant_id=body.participant_id,
         mode=body.mode,
-        condition_order=f"participant_{participant_index}",
+        condition_order=f"si_p{participant_index}",
+        identity_order=identity_order,
+        sc_session_id=body.sc_session_id,
         monotonic_start_s=time.monotonic(),
     )
     db.add(session)
@@ -222,6 +215,7 @@ def submit_rating(
         rating=body.rating,
         agent_condition=body.agent_condition,
         agent_rating=body.agent_rating,
+        is_rng=body.is_rng,
         artwork_onset_ms=body.artwork_onset_ms,
         rating_rt_ms=body.rating_rt_ms,
         trial_index=body.trial_index,
@@ -257,26 +251,6 @@ def log_event(
     db.commit()
     db.refresh(ev)
     return LogEventResponse(event_id=ev.id, t_ms=t_ms)
-
-
-@app.post("/sessions/{session_id}/triggers", response_model=LogTriggerResponse)
-def log_trigger(
-    session_id: str,
-    body: LogTriggerBody,
-    session: models.Session = Depends(require_session_token),
-    db: DBSession = Depends(get_db),
-):
-    t_ms = body.t_client_ms if body.t_client_ms is not None else session_local_ms(session)
-    tr = models.Trigger(
-        session_id=session.id,
-        tr_number=body.tr_number,
-        t_ms=t_ms,
-        t_client_ms=body.t_client_ms,
-    )
-    db.add(tr)
-    db.commit()
-    db.refresh(tr)
-    return LogTriggerResponse(trigger_id=tr.id, t_ms=t_ms)
 
 
 @app.post("/sessions/{session_id}/complete", response_model=CompleteSessionResponse)

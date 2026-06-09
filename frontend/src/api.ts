@@ -1,11 +1,9 @@
 /**
  * API client for the Social Influence Task backend.
- * Mirrors the structure of the social connection task's api.ts.
  */
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
-// Client-side session clock — same convention as social connection task.
 let clientT0: number | null = null;
 
 export function clientSessionMs(): number {
@@ -29,7 +27,7 @@ async function json<T>(res: Response): Promise<T> {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type Mode = "pilot" | "scanner" | "dev";
+export type Mode = "pilot" | "dev";
 
 export type Artwork = {
   artwork_id: number;
@@ -42,8 +40,9 @@ export type Artwork = {
 };
 
 export type Phase2Trial = Artwork & {
-  agent_condition: string; // 'Alex' | 'Sam' | 'Casey' | 'Jordan' | 'RNG'
-  agent_rating: number;    // 0–100
+  agent_condition: string;
+  agent_rating: number;
+  is_rng: boolean;
 };
 
 export type CreateSessionResponse = {
@@ -59,6 +58,8 @@ export type CreateSessionResponse = {
 export async function createSession(body: {
   participant_id: string;
   mode: Mode;
+  identities?: string;
+  sc_session_id?: string;
 }): Promise<CreateSessionResponse> {
   const result = await json<CreateSessionResponse>(
     await fetch(`${BASE}/sessions`, {
@@ -101,6 +102,7 @@ export async function submitRating(
     rating: number;
     agent_condition?: string;
     agent_rating?: number;
+    is_rng?: boolean;
     artwork_onset_ms?: number;
     rating_rt_ms?: number;
     trial_index?: number;
@@ -133,26 +135,6 @@ export async function postEvent(
   const t_client_ms = clientSessionMs();
   return json(
     await fetch(`${BASE}/sessions/${sessionId}/events`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ ...body, t_client_ms }),
-    }),
-  );
-}
-
-// ── Triggers ──────────────────────────────────────────────────────────────────
-
-export async function postTrigger(
-  sessionId: string,
-  token: string,
-  body: { tr_number: number },
-): Promise<{ trigger_id: string; t_ms: number }> {
-  const t_client_ms = clientSessionMs();
-  return json(
-    await fetch(`${BASE}/sessions/${sessionId}/triggers`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -2,17 +2,15 @@
  * Social Influence Task — jsPsych Timeline
  *
  * Two-phase structure:
- *   Phase 1 (baseline): ~75 artwork ratings, no agent info shown.
- *   Phase 2 (influence): ~75 artwork ratings, each preceded by agent's rating.
+ *   Phase 1 (baseline): 50 artwork ratings, no agent info shown.
+ *   Phase 2 (influence): 50 artwork ratings, each preceded by agent's rating.
  *
- * Trial structure per Phase 2 trial (from design doc):
+ * Trial structure per Phase 2 trial:
  *   1. Artwork + agent rating reveal (4 s)
- *   2. Re-rating: participant rates on 0–100 slider (self-paced, ≤8 s)
- *   3. ITI: fixation cross (2–4 s jittered)
+ *   2. Re-rating: participant rates on 0-100 slider (self-paced, <=8 s)
+ *   3. ITI: fixation cross (2-4 s jittered)
  *
  * Phase 1 trials use the same slider, no reveal step.
- *
- * Scanner mode: waits for first TR ('5' keypress) before starting.
  */
 
 import type { JsPsych } from "jspsych";
@@ -76,7 +74,6 @@ function artworkImageHtml(trial: Artwork, size: "md" | "lg" = "lg"): string {
                  alt="${trial.title}"
                  style="max-width:${maxW};max-height:280px;object-fit:contain;border-radius:4px;margin-bottom:0.75rem;">`;
   }
-  // Fallback placeholder when image not yet downloaded
   return `
     <div style="width:${maxW};height:220px;background:#f1f5f9;border:1px solid #e2e8f0;
                 border-radius:4px;display:flex;flex-direction:column;align-items:center;
@@ -88,13 +85,14 @@ function artworkImageHtml(trial: Artwork, size: "md" | "lg" = "lg"): string {
   `;
 }
 
-function agentRatingBarHtml(agentName: string, agentRating: number): string {
+function agentRatingBarHtml(agentName: string, agentRating: number, isRng: boolean): string {
+  const label = isRng ? "Another user" : agentName;
   const pct = agentRating;
   return `
     <div style="max-width:360px;margin:0 auto 1rem;background:#f8fafc;border:1px solid #e2e8f0;
                 border-radius:8px;padding:12px 16px;">
       <div style="font-size:13px;color:#475569;margin-bottom:6px;">
-        <strong>${agentName}</strong> rated this artwork:
+        <strong>${label}</strong> rated this artwork:
         <span style="font-size:16px;font-weight:600;color:#1e293b;margin-left:8px;">${agentRating}</span>
         <span style="font-size:11px;color:#94a3b8;"> / 100</span>
       </div>
@@ -110,7 +108,7 @@ function agentRatingBarHtml(agentName: string, agentRating: number): string {
 
 // ── Phase 1: Baseline Rating ──────────────────────────────────────────────────
 
-function buildPhase1Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) {
+function buildPhase1Trials(ctx: TaskContext, blockId: string, _jsPsych: JsPsych) {
   const maxRatingMs = ctx.maxRatingMs ?? 8000;
   const itiMin = ctx.itiMinMs ?? 2000;
   const itiMax = ctx.itiMaxMs ?? 4000;
@@ -163,7 +161,7 @@ function buildPhase1Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) 
 
 // ── Phase 2: Influence Task ───────────────────────────────────────────────────
 
-function buildPhase2Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) {
+function buildPhase2Trials(ctx: TaskContext, blockId: string, _jsPsych: JsPsych) {
   const revealMs = ctx.revealDurationMs ?? 4000;
   const maxRatingMs = ctx.maxRatingMs ?? 8000;
   const itiMin = ctx.itiMinMs ?? 2000;
@@ -172,13 +170,12 @@ function buildPhase2Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) 
   return ctx.phase2Trials.flatMap((trial) => {
     let artworkOnsetMs: number | null = null;
 
-    // Step 1: Reveal artwork + agent rating (fixed duration)
     const revealTrial = {
       type: HtmlKeyboardResponse,
       stimulus: `
         <div style="max-width:38rem;margin:0 auto;text-align:center;">
           ${artworkImageHtml(trial)}
-          ${agentRatingBarHtml(trial.agent_condition, trial.agent_rating)}
+          ${agentRatingBarHtml(trial.agent_condition, trial.agent_rating, trial.is_rng)}
         </div>
       `,
       choices: "NO_KEYS" as const,
@@ -189,6 +186,7 @@ function buildPhase2Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) 
           artwork_id: trial.artwork_id,
           agent_condition: trial.agent_condition,
           agent_rating: trial.agent_rating,
+          is_rng: trial.is_rng,
           trial_index: trial.trial_index,
         }, blockId);
       },
@@ -197,7 +195,6 @@ function buildPhase2Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) 
       },
     };
 
-    // Step 2: Re-rating slider
     const ratingTrial = {
       type: HtmlSliderResponse,
       stimulus: sliderHtml(artworkImageHtml(trial, "md")),
@@ -214,6 +211,7 @@ function buildPhase2Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) 
           rating: data.response,
           agent_condition: trial.agent_condition,
           agent_rating: trial.agent_rating,
+          is_rng: trial.is_rng,
           rt_ms: data.rt,
           trial_index: trial.trial_index,
         }, blockId);
@@ -222,6 +220,7 @@ function buildPhase2Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) 
           rating: data.response,
           agent_condition: trial.agent_condition,
           agent_rating: trial.agent_rating,
+          is_rng: trial.is_rng,
           artwork_onset_ms: artworkOnsetMs ?? undefined,
           rating_rt_ms: data.rt,
           trial_index: trial.trial_index,
@@ -229,7 +228,6 @@ function buildPhase2Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) 
       },
     };
 
-    // Step 3: ITI
     const itiTrial = {
       type: HtmlKeyboardResponse,
       stimulus: `<div style="text-align:center;font-size:3rem;color:#64748b;">+</div>`,
@@ -244,26 +242,12 @@ function buildPhase2Trials(ctx: TaskContext, blockId: string, jsPsych: JsPsych) 
 
 // ── Full Timeline Builder ─────────────────────────────────────────────────────
 
-export async function buildTimeline(ctx: TaskContext, jsPsych: JsPsych) {
-  // Create blocks up front so we have IDs for logging
+export async function buildTimeline(ctx: TaskContext, _jsPsych: JsPsych) {
   const phase1Block = await createBlock(ctx.sessionId, ctx.token, 1);
   const phase2Block = await createBlock(ctx.sessionId, ctx.token, 2);
 
-  const phase1Trials = buildPhase1Trials(ctx, phase1Block.block_id, jsPsych);
-  const phase2Trials = buildPhase2Trials(ctx, phase2Block.block_id, jsPsych);
-
-  const scannerWait = {
-    type: HtmlKeyboardResponse,
-    stimulus: `
-      <div style="text-align:center;color:#475569;">
-        <div style="font-size:1.5rem;margin-bottom:1rem;">Waiting for scanner…</div>
-        <div style="font-size:0.95rem;">The task will begin automatically.</div>
-      </div>
-    `,
-    choices: ["5"],
-    on_start: () => logEvent(ctx, "waiting_for_scanner_shown"),
-    on_finish: () => logEvent(ctx, "first_tr_received"),
-  };
+  const phase1Trials = buildPhase1Trials(ctx, phase1Block.block_id, _jsPsych);
+  const phase2Trials = buildPhase2Trials(ctx, phase2Block.block_id, _jsPsych);
 
   const phase1Instructions = {
     type: HtmlButtonResponse,
@@ -319,7 +303,7 @@ export async function buildTimeline(ctx: TaskContext, jsPsych: JsPsych) {
         </p>
         <ul style="list-style:disc;padding-left:1.5rem;margin-bottom:1rem;">
           <li style="margin-bottom:0.4rem;">First, look at the other person's rating.</li>
-          <li style="margin-bottom:0.4rem;">Then rate the artwork yourself on the same 0–100 scale.</li>
+          <li style="margin-bottom:0.4rem;">Then rate the artwork yourself on the same 0-100 scale.</li>
           <li>Your ratings can stay the same or change — it's up to you.</li>
         </ul>
       </div>
@@ -346,7 +330,6 @@ export async function buildTimeline(ctx: TaskContext, jsPsych: JsPsych) {
   };
 
   return [
-    ...(ctx.mode === "scanner" ? [scannerWait] : []),
     phase1Instructions,
     ...phase1Trials,
     phase1End,

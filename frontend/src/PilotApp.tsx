@@ -1,14 +1,13 @@
 /**
  * PilotApp.tsx — Prolific participant-facing orchestrator.
  *
- * Reads PROLIFIC_PID from URL, creates a session, runs the full timeline,
- * then redirects to Prolific completion URL.
+ * Reads PROLIFIC_PID, identities, and sc_session_id from URL params,
+ * creates a session, runs the full timeline, then redirects to Prolific.
  *
  * Rendered when ?mode=pilot is in the URL (see main.tsx).
  *
- * Note: agent_identities are passed from the social connection task rotation
- * via URL params (e.g. ?identities=Alex,Sam,Casey,Jordan) so Phase 2 trial
- * labels match the agents the participant already interacted with.
+ * Prolific URL format:
+ *   ?mode=pilot&PROLIFIC_PID={{%PROLIFIC_PID%}}&identities=Alex,Sam,Casey,Jordan,Morgan,Riley&sc_session_id=<id>
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -33,10 +32,15 @@ export default function PilotApp() {
   const init = useCallback(async () => {
     try {
       const pid = getProlificPid();
+      const params = new URLSearchParams(window.location.search);
+      const identities = params.get("identities") ?? undefined;
+      const sc_session_id = params.get("sc_session_id") ?? undefined;
 
       const s = await createSession({
         participant_id: pid,
         mode: "pilot",
+        identities,
+        sc_session_id,
       });
 
       setPhase({
