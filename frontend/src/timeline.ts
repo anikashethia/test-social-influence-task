@@ -129,7 +129,7 @@ function addSliderValueDisplay() {
   slider.addEventListener('input', () => { display.textContent = slider.value; });
 }
 
-function addScreenOverlays(trialIndex: number, total: number, durationMs: number) {
+function addScreenOverlays(trialIndex: number, total: number, durationMs: number, showTimer = true) {
   const container = document.querySelector('.jspsych-display-element') || document.body;
 
   // Remove stale overlays from previous trial
@@ -142,6 +142,8 @@ function addScreenOverlays(trialIndex: number, total: number, durationMs: number
   progress.style.cssText = 'position:fixed;top:1rem;right:1.5rem;font-size:0.85rem;color:#94a3b8;z-index:100;';
   progress.textContent = `${trialIndex + 1} / ${total}`;
   container.appendChild(progress);
+
+  if (!showTimer) return;
 
   // Countdown timer — top left
   const timer = document.createElement('div');
@@ -235,7 +237,7 @@ function buildTrials(ctx: TaskContext, blockId: string, _jsPsych: JsPsych) {
       `,
       choices: "NO_KEYS" as const,
       trial_duration: revealMs,
-      on_load: () => addScreenOverlays(trial.trial_index, ctx.trials.length, revealMs),
+      on_load: () => addScreenOverlays(trial.trial_index, ctx.trials.length, revealMs, false),
       on_start: () => {
         logEvent(ctx, "reveal_onset", {
           artwork_id: trial.artwork_id,
